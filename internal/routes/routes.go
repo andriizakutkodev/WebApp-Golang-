@@ -11,15 +11,46 @@ import (
 	"gorm.io/gorm"
 )
 
-func RegisterRoutes(ge *g.Engine, storage *gorm.DB, cfg *config.Config) {
-	authGroup := ge.Group("/auth")
-	{
-		authGroup.POST("/register", func(ctx *g.Context) { handleRegister(ctx, storage, cfg) })
-		authGroup.POST("/login", func(ctx *g.Context) { handleLogin(ctx, storage, cfg) })
+// Middlewares
+func AuthMiddleware(cfg *config.Config) g.HandlerFunc {
+	return func(ctx *g.Context) {
+		token := ctx.GetHeader("Authorization")
+		if token == "" || !isValidToken(token, cfg) {
+			ctx.JSON(http.StatusUnauthorized, g.H{"error": "Unauthorized"})
+			ctx.Abort()
+			return
+		}
+		ctx.Next()
 	}
 }
 
-func handleRegister(ctx *g.Context, storage *gorm.DB, cfg *config.Config) {
+func isValidToken(token string, cfg *config.Config) bool {
+	isValid, _ := jwt.ValidateToken(token, cfg)
+	return isValid
+}
+
+// Main function to register routes
+func RegisterRoutes(ge *g.Engine, db *gorm.DB, cfg *config.Config) {
+	// Authentication routes: login and register
+	authGroup := ge.Group("/auth")
+	{
+		authGroup.POST("/register", func(ctx *g.Context) { handleRegister(ctx, db, cfg) })
+		authGroup.POST("/login", func(ctx *g.Context) { handleLogin(ctx, db, cfg) })
+	}
+
+	// User notes routes
+	notesGroup := ge.Group("/notes").Use(AuthMiddleware(cfg))
+	{
+		notesGroup.GET("/", func(ctx *g.Context) { handleGetAllNotes(ctx, db) })
+		notesGroup.POST("/create", func(ctx *g.Context) {})
+		notesGroup.PUT("/update", func(ctx *g.Context) {})
+		notesGroup.DELETE("/delete", func(ctx *g.Context) {})
+	}
+}
+
+// Auth handlers
+
+func handleRegister(ctx *g.Context, db *gorm.DB, cfg *config.Config) {
 	user := models.User{}
 
 	if err := ctx.ShouldBindJSON(&user); err != nil {
@@ -28,7 +59,7 @@ func handleRegister(ctx *g.Context, storage *gorm.DB, cfg *config.Config) {
 	}
 
 	var count int64
-	storage.Model(&models.User{}).Where("email = ?", user.Email).Count(&count)
+	db.Model(&models.User{}).Where("email = ?", user.Email).Count(&count)
 	if count > 0 {
 		ctx.JSON(http.StatusBadRequest, g.H{"error": "email has already taken"})
 		return
@@ -37,7 +68,7 @@ func handleRegister(ctx *g.Context, storage *gorm.DB, cfg *config.Config) {
 	hashedPassword := hasher.HashPassword(user.Password)
 	user.Password = hashedPassword
 
-	result := storage.Create(&user)
+	result := db.Create(&user)
 
 	if result.RowsAffected == 0 {
 		ctx.JSON(http.StatusBadRequest, g.H{"error": result.Error})
@@ -54,7 +85,7 @@ func handleRegister(ctx *g.Context, storage *gorm.DB, cfg *config.Config) {
 	ctx.JSON(http.StatusOK, g.H{"token": jwtToken})
 }
 
-func handleLogin(ctx *g.Context, storage *gorm.DB, cfg *config.Config) {
+func handleLogin(ctx *g.Context, db *gorm.DB, cfg *config.Config) {
 	user := models.User{}
 
 	if err := ctx.ShouldBindJSON(&user); err != nil {
@@ -63,14 +94,14 @@ func handleLogin(ctx *g.Context, storage *gorm.DB, cfg *config.Config) {
 	}
 
 	var count int64
-	storage.Model(&models.User{}).Where("email = ?", user.Email).Count(&count)
+	db.Model(&models.User{}).Where("email = ?", user.Email).Count(&count)
 	if count == 0 {
 		ctx.JSON(http.StatusBadRequest, g.H{"error": "invalid credentials"})
 		return
 	}
 
 	passwordToVerify := user.Password
-	storage.First(&user, "email = ?", user.Email)
+	db.First(&user, "email = ?", user.Email)
 
 	isPasswordValid := hasher.VerifyPassword(user.Password, passwordToVerify)
 
@@ -87,4 +118,14 @@ func handleLogin(ctx *g.Context, storage *gorm.DB, cfg *config.Config) {
 	}
 
 	ctx.JSON(http.StatusOK, g.H{"token": jwtToken})
+}
+
+// Notes handlers
+
+func handleGetAllNotes(ctx *g.Context, db *gorm.DB) {
+	var notes []models.Note
+
+	db.Find(&notes)
+
+	ctx.JSON(http.StatusOK, notes)
 }

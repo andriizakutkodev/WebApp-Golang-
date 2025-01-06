@@ -8,4 +8,14 @@ type User struct {
 	Password  string
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	Notes     []Note
+}
+
+type Note struct {
+	ID        uint
+	Title     string
+	Body      string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	UserID    uint
 }

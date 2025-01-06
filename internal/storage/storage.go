@@ -15,7 +15,7 @@ func InitStorage(cfg *config.Config) *gorm.DB {
 		panic(err.Error())
 	}
 
-	db.AutoMigrate(models.User{})
+	db.AutoMigrate(models.User{}, models.Note{})
 
 	return db
 }
