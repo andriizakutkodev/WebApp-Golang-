@@ -13,9 +13,10 @@ func main() {
 	cfg := config.GetConfig()
 	// Init storage and migrate domain models
 	db := storage.InitStorage(cfg)
-	storage.AutoMigrate(db)
 	// Init router and map all routes
 	r := gin.Default()
+
 	routes.RegisterRoutes(r, db, cfg)
+
 	r.Run(":8080")
 }
