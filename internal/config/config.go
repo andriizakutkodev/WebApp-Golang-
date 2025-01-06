@@ -14,13 +14,13 @@ type Jwt struct {
 }
 
 func GetConfig() *Config {
-	var cnf Config
+	var cfg Config
 
-	err := ce.ReadConfig("../../config/local.yaml", &cnf)
+	err := ce.ReadConfig("../../config/local.yaml", &cfg)
 
 	if err != nil {
 		panic(err.Error())
 	}
 
-	return &cnf
+	return &cfg
 }
