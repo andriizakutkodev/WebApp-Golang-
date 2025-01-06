@@ -2,18 +2,20 @@ package main
 
 import (
 	"webapp/internal/config"
-	"webapp/internal/logger"
-	s "webapp/internal/storage"
+	"webapp/internal/routes"
+	"webapp/internal/storage"
+
+	"github.com/gin-gonic/gin"
 )
 
 func main() {
 	// Initialize config from local.yaml file
 	cfg := config.GetConfig()
-	// Init logger
-	log := logger.InitLogger(cfg.Env)
 	// Init storage and migrate domain models
-	storage := s.InitStorage(cfg)
-	s.AutoMigrate(storage.Db)
-
-	log.Info("application started")
+	s := storage.InitStorage(cfg)
+	storage.AutoMigrate(s.Db)
+	// Init router and map all routes
+	r := gin.Default()
+	routes.RegisterRoutes(r)
+	r.Run(":8080")
 }

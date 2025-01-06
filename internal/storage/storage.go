@@ -5,17 +5,17 @@ import (
 	"webapp/internal/models"
 
 	"gorm.io/driver/postgres"
-	g "gorm.io/gorm"
+	"gorm.io/gorm"
 )
 
 type Storage struct {
-	Db *g.DB
+	Db *gorm.DB
 }
 
 func InitStorage(cfg *config.Config) *Storage {
 	var storage Storage
 
-	db, err := g.Open(postgres.Open(cfg.ConnectionString), &g.Config{})
+	db, err := gorm.Open(postgres.Open(cfg.ConnectionString), &gorm.Config{})
 
 	if err != nil {
 		panic(err.Error())
@@ -26,6 +26,6 @@ func InitStorage(cfg *config.Config) *Storage {
 	return &storage
 }
 
-func AutoMigrate(db *g.DB) {
+func AutoMigrate(db *gorm.DB) {
 	db.AutoMigrate(models.User{})
 }
