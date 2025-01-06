@@ -8,22 +8,14 @@ import (
 	"gorm.io/gorm"
 )
 
-type Storage struct {
-	Db *gorm.DB
-}
-
-func InitStorage(cfg *config.Config) *Storage {
-	var storage Storage
-
+func InitStorage(cfg *config.Config) *gorm.DB {
 	db, err := gorm.Open(postgres.Open(cfg.ConnectionString), &gorm.Config{})
 
 	if err != nil {
 		panic(err.Error())
 	}
 
-	storage.Db = db
-
-	return &storage
+	return db
 }
 
 func AutoMigrate(db *gorm.DB) {

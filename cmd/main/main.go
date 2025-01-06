@@ -12,10 +12,10 @@ func main() {
 	// Initialize config from local.yaml file
 	cfg := config.GetConfig()
 	// Init storage and migrate domain models
-	s := storage.InitStorage(cfg)
-	storage.AutoMigrate(s.Db)
+	db := storage.InitStorage(cfg)
+	storage.AutoMigrate(db)
 	// Init router and map all routes
 	r := gin.Default()
-	routes.RegisterRoutes(r)
+	routes.RegisterRoutes(r, db, cfg)
 	r.Run(":8080")
 }
