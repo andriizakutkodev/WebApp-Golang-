@@ -30,10 +30,6 @@ func GenerateToken(user *models.User, cfg *config.Config) (string, error) {
 }
 
 func ValidateToken(tokenString string, cfg *config.Config) (bool, error) {
-	if strings.HasPrefix(strings.ToLower(tokenString), "bearer ") {
-		tokenString = strings.TrimSpace(strings.TrimPrefix(tokenString, "Bearer "))
-	}
-
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, errors.New("invalid signing method")
@@ -58,4 +54,21 @@ func ValidateToken(tokenString string, cfg *config.Config) (bool, error) {
 	}
 
 	return false, errors.New("invalid token")
+}
+
+func GetUserIdFromToken(tokenString string, cfg *config.Config) uint {
+	if strings.HasPrefix(strings.ToLower(tokenString), "bearer ") {
+		tokenString = strings.TrimSpace(strings.TrimPrefix(tokenString, "Bearer "))
+	}
+
+	token, _ := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("invalid signing method")
+		}
+		return []byte(cfg.Jwt.Secret), nil
+	})
+
+	claims, _ := token.Claims.(jwt.MapClaims)
+
+	return uint(claims["user_id"].(float64))
 }

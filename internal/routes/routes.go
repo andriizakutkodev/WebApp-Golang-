@@ -2,6 +2,7 @@ package routes
 
 import (
 	"net/http"
+	"strings"
 	"webapp/internal/config"
 	"webapp/internal/jwt"
 	"webapp/internal/models"
@@ -14,7 +15,7 @@ import (
 // Middlewares
 func AuthMiddleware(cfg *config.Config) g.HandlerFunc {
 	return func(ctx *g.Context) {
-		token := ctx.GetHeader("Authorization")
+		token := getTokenFromContext(ctx)
 		if token == "" || !isValidToken(token, cfg) {
 			ctx.JSON(http.StatusUnauthorized, g.H{"error": "Unauthorized"})
 			ctx.Abort()
@@ -22,6 +23,16 @@ func AuthMiddleware(cfg *config.Config) g.HandlerFunc {
 		}
 		ctx.Next()
 	}
+}
+
+func getTokenFromContext(ctx *g.Context) string {
+	token := ctx.GetHeader("Authorization")
+
+	if strings.HasPrefix(strings.ToLower(token), "bearer ") {
+		token = strings.TrimSpace(strings.TrimPrefix(token, "Bearer "))
+	}
+
+	return token
 }
 
 func isValidToken(token string, cfg *config.Config) bool {
@@ -41,10 +52,10 @@ func RegisterRoutes(ge *g.Engine, db *gorm.DB, cfg *config.Config) {
 	// User notes routes
 	notesGroup := ge.Group("/notes").Use(AuthMiddleware(cfg))
 	{
-		notesGroup.GET("/", func(ctx *g.Context) { handleGetAllNotes(ctx, db) })
-		notesGroup.POST("/create", func(ctx *g.Context) {})
-		notesGroup.PUT("/update", func(ctx *g.Context) {})
-		notesGroup.DELETE("/delete", func(ctx *g.Context) {})
+		notesGroup.GET("/", func(ctx *g.Context) { handleGetAllNotes(ctx, db, cfg) })
+		notesGroup.POST("/create", func(ctx *g.Context) { handleCreateNoteForUser(ctx, db, cfg) })
+		notesGroup.PUT("/update", func(ctx *g.Context) { handleUpdateNoteForUser(ctx, db, cfg) })
+		notesGroup.DELETE("/delete", func(ctx *g.Context) { handleDeleteNoteForUser(ctx, db, cfg) })
 	}
 }
 
@@ -122,10 +133,95 @@ func handleLogin(ctx *g.Context, db *gorm.DB, cfg *config.Config) {
 
 // Notes handlers
 
-func handleGetAllNotes(ctx *g.Context, db *gorm.DB) {
+func handleGetAllNotes(ctx *g.Context, db *gorm.DB, cfg *config.Config) {
 	var notes []models.Note
 
-	db.Find(&notes)
+	token := getTokenFromContext(ctx)
+	userId := jwt.GetUserIdFromToken(token, cfg)
+
+	db.Model(models.Note{}).Where("user_id = ?", userId).Find(&notes)
 
 	ctx.JSON(http.StatusOK, notes)
+}
+
+func handleCreateNoteForUser(ctx *g.Context, db *gorm.DB, cfg *config.Config) {
+	var note models.Note
+
+	if err := ctx.ShouldBindJSON(&note); err != nil {
+		ctx.JSON(http.StatusBadRequest, g.H{"error": err.Error()})
+		return
+	}
+
+	note.UserID = jwt.GetUserIdFromToken(getTokenFromContext(ctx), cfg)
+
+	result := db.Create(&note)
+
+	if result.RowsAffected == 0 {
+		ctx.JSON(http.StatusBadRequest, g.H{"error": result.Error})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, g.H{"note_id": note.ID})
+}
+
+func handleUpdateNoteForUser(ctx *g.Context, db *gorm.DB, cfg *config.Config) {
+	var note models.Note
+	var noteToUpdate models.Note
+
+	if err := ctx.ShouldBindJSON(&note); err != nil {
+		ctx.JSON(http.StatusBadRequest, g.H{"error": err.Error()})
+		return
+	}
+
+	token := getTokenFromContext(ctx)
+	userId := jwt.GetUserIdFromToken(token, cfg)
+
+	if note.UserID != userId {
+		ctx.JSON(http.StatusBadRequest, g.H{"error": "you don't have rights to update this note"})
+		return
+	}
+
+	db.First(&noteToUpdate, note.ID)
+
+	noteToUpdate.Title = note.Title
+	noteToUpdate.Body = note.Body
+
+	result := db.Save(&noteToUpdate)
+
+	if result.RowsAffected == 0 {
+		ctx.JSON(http.StatusBadRequest, g.H{"error": result.Error})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, g.H{"result": "note has been updated"})
+}
+
+func handleDeleteNoteForUser(ctx *g.Context, db *gorm.DB, cfg *config.Config) {
+	noteId := ctx.DefaultQuery("note_id", "")
+
+	if noteId == "" {
+		ctx.JSON(http.StatusBadRequest, g.H{"error": "you should provide note id in query params"})
+		return
+	}
+
+	var note models.Note
+
+	db.First(&note, noteId)
+
+	token := getTokenFromContext(ctx)
+	userId := jwt.GetUserIdFromToken(token, cfg)
+
+	if note.UserID != userId {
+		ctx.JSON(http.StatusBadRequest, g.H{"error": "you don't have rights to delete this note"})
+		return
+	}
+
+	result := db.Delete(&note)
+
+	if result.RowsAffected == 0 {
+		ctx.JSON(http.StatusBadRequest, g.H{"error": result.Error})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, g.H{"result": "note has been removed"})
 }
